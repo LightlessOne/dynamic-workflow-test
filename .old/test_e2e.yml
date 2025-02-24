@@ -1,0 +1,88 @@
+name: Test E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execute-image-module1:
+    name: Execute Module that Calculates
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: run-sample
+      input_params: |
+        params:
+          param_1: 9
+          param_2: 10
+      upload_output_files: false
+
+  execute-image-module2:
+    needs: execute-image-module1
+    name: Execute Module that Downloads
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: download-file
+      input_params: |
+        params:
+          url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/README.md
+          filename: README.md
+      upload_output_files: true
+      output_artifact_name: first_output
+
+  execute-image-module3:
+    needs: execute-image-module2
+    name: Execute Module that Downloads
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: download-file
+      input_params: |
+        params:
+          url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/SECURITY.md
+          filename: SECURITY.md
+      upload_output_files: true
+      output_artifact_name: second_output
+
+  execute-image-module4:
+    needs: execute-image-module3
+    name: Execute Module that Processes Input File
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: analyze-file
+      input_params: |
+        params:
+          filename: SECURITY.md
+      input_artifacts_pattern: "*output"
+
+  check_previous_jobs_results:
+    needs: [execute-image-module1, execute-image-module2, execute-image-module3, execute-image-module4]
+    runs-on: ubuntu-latest
+    env:
+      previous_output_params1: ${{ needs.execute-image-module1.outputs.output_params }}
+      previous_output_params2: ${{ needs.execute-image-module2.outputs.output_params }}
+      previous_output_params3: ${{ needs.execute-image-module3.outputs.output_params }}
+      previous_output_params4: ${{ needs.execute-image-module4.outputs.output_params }}
+    steps:
+      - name: Show Job1 Outputs
+        id: show-outputs
+        run: |
+          echo "$previous_output_params1"
+          echo "$previous_output_params2"
+          echo "$previous_output_params3"
+          echo "$previous_output_params4"
+
+  download_all_artifacts_and_list:
+    needs: [check_previous_jobs_results]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: rt-stored/
+          merge-multiple: true
+      - name: Display structure of downloaded files
+        run: ls -R rt-stored/

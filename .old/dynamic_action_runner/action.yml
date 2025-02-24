@@ -1,0 +1,29 @@
+name: Dynamic Action Runner
+inputs:
+  uses:
+    description: Action reference or path, e.g. `actions/setup-node@v3`
+    required: true
+  with:
+    description: 'JSON-ified `inputs` for the action, e.g. `{"node-version": "18"}`'
+    required: false
+    default: "{}"
+runs:
+  using: composite
+  steps:
+    - name: Create 'Run' action
+      shell: bash
+      run: |
+        mkdir -p ./.dynamic-action &&
+        cat <<'EOF' >./.dynamic-action/action.yml
+        runs:
+          using: composite
+          steps:
+          - name: Run
+            uses: ${{ inputs.uses }}
+            with: ${{ inputs.with || '{}' }}
+        EOF
+    - name: Run
+      uses: ./.dynamic-action
+    - name: Cleanup
+      shell: bash
+      run: rm -rf ./.dynamic-action

@@ -1,0 +1,68 @@
+name: Test v2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+#env:
+#  PREX: false
+
+jobs:
+  prepare-dynamic-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          echo "I'm going to create and trigger another job/workflow from this one on the fly!"
+          echo "Is it even legal?"
+          cat <<EOF > ./action.yml
+          runs:
+            using: composite
+            steps:
+            - name: A dynamic step 1
+              shell: bash
+              run: echo "qwerty123" >> result.txt
+            - name: A dynamic step 2
+              shell: bash
+              run: echo "azxcvb" >> result.txt
+          EOF
+          git checkout -b sub_flow_${{ github.run_number }}
+          git add action.yml
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -a -m "Create new temp action"
+          git push --set-upstream origin sub_flow_${{ github.run_number }}
+      - uses: ./.github/dynamic_action_runner
+        with:
+          uses: LightlessOne/dynamic-workflow-test@sub_flow_${{ github.run_number }}
+      - name: Check result
+        run: cat ./result.txt
+
+
+#  run-dynamic-action:
+#    needs: prepare-dynamic-action
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: ./.github/dynamic_action_runner
+#        with:
+#          uses: LightlessOne/dynamic-workflow-test@sub_flow_${{ github.run_number }}
+
+
+# commit file from local (imagine its a generated one) to new branch like 'sub_flow_{number}
+#      - name: Run downstream workflow
+#        run: gh workflow run 'Reusable workflow' --ref test-branch
+#        env:
+#          GH_TOKEN: ${{ github.token }}
+
+#  job2:
+#    needs: prepare-downstream-workflow-in-caller
+#    uses: LightlessOne/dynamic-workflow-test/.github/workflows/reusable.yml@sub_flow_${{ secrets.token }}
+
+# all of these are useless, what are we even looking for in github integration?
+
+# GENERATOR generates valid github.yml, puts it into new branch
+# then we run it with 'gh workflow run' on that branch -> and provide link?

@@ -1,0 +1,117 @@
+name: Test E2E 2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# +how we process secrets - we can insert them into .env in our flow (but not into .with of sub-flows)
+# +how will we process parallel cases?
+# +we still need STAGES and JOBS, to reuse 'modules_ops' as is
+# +need files test
+# guess we can manage/pass all of those during GENERATOR.py
+# need to check edge-cases on GITHUB_COMMON_ENV_VARS - how limited are we length-wise? will need test with N > 100 generated vars (16+ bytes each)
+
+env:
+  GITHUB_COMMON_ENV_VARS: |
+    tqwt: 25wrw
+    qwerrrr: ${tqwt}_qweqwwe
+    TEST_VAR1: 10
+    TEST_VAR2: ${TEST_VAR1}000
+    THIS_VAR_IS_A_SECRET: ${{ secrets.REPO_SECRET_NUMBER }}
+
+jobs:
+  prepare-common-vars:
+    name: Prepare Common Env Vars
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save ENV VARS to stored_data
+        run: |
+          mkdir -p rt/stored_data/prepare-common-vars/job
+          echo "$GITHUB_COMMON_ENV_VARS" >> rt/stored_data/prepare-common-vars/job/params.yaml
+          echo "name: prepare-common-vars" >> rt/stored_data/prepare-common-vars/stage.yaml
+          echo "previous: []" >> rt/stored_data/prepare-common-vars/stage.yaml
+      - name: Upload files
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepare-common-vars
+          path: rt/stored_data
+
+  execute-image-module1:
+    needs: prepare-common-vars
+    name: Execute Module that Multiplies
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: stage1
+      job_id: execute-image-module1
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${THIS_VAR_IS_A_SECRET}
+            param_2: 2
+            operation: multiply
+            result_name: MULTIPLICATION_RESULT
+      output: |
+        params:
+          params: '*'
+
+  execute-image-module2:
+    needs: execute-image-module1
+    name: Execute Module that Increments previous result
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: stage2
+      job_id: execute-image-module2
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: run-sample
+      input: |
+        params:
+          params:
+            param_1: ${MULTIPLICATION_RESULT}
+            param_2: ${TEST_VAR2}
+      output: |
+        params:
+          CALC_RESULT: params.result
+          CALC_RESULT2: params.result
+          CALC_RESULT3: params.result
+
+#  execute-image-module1:
+#    name: Download file from url
+#    uses: ./.github/workflows/_execute_image_module.yml
+#    with:
+#      stage_id: stage1
+#      job_id: execute-image-module1
+#      module_image: ghcr.io/lightlessone/quber_cli:master
+#      module_command: download-file
+#      input: |
+#        params:
+#          params:
+#            url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/README.md
+#            filename: README.md
+#      output: |
+#        params:
+#          params: '*'
+#        files:
+#          test_file_key: README.md
+#
+#  execute-image-module2:
+#    needs: execute-image-module1
+#    name: Analyze file from previous job
+#    uses: ./.github/workflows/_execute_image_module.yml
+#    with:
+#      stage_id: stage2
+#      job_id: execute-image-module2
+#      module_image: ghcr.io/lightlessone/quber_cli:master
+#      module_command: analyze-file
+#      input: |
+#        files:
+#          test_file_key:
+#        params:
+#          params:
+#            filename: README.md
+#      output: |
+#        params:
+#          params: '*'

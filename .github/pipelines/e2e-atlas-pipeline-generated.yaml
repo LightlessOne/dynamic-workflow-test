@@ -1,0 +1,93 @@
+variables:
+  QUBER_CLI_MODULE_IMAGE: ghcr.io/lightlessone/quber_cli:master
+  JOB_TYPE: PYTHON_DOCKER_IMAGE
+  MODULES_TYPE: PYTHON_DOCKER_IMAGE
+  CM_URL: https://test.qwe
+  CM_USERNAME: admin
+  CM_PASSWORD: qwerty123
+  CMDB_TENANT_NAME: Applications
+  CMDB_CLOUD_NAME: dobp_oob_dev1_dev_3
+
+include:
+- project: prod.dobp/dobp-ci/gitlab/dobp-gitlab-modules-ops
+  ref: master
+  file:
+  - templates/source-delivery-image.yaml
+  - templates/module-image-api.yaml
+- local: config/module-images.yaml
+
+
+stages:
+- Calculate 9+10
+- Download File 1
+- Download File 2
+- Analyze File
+
+Calculate 9+10:
+  extends: .template-module-calculate
+  stage: Calculate 9+10
+  variables:
+    input: |
+      params:
+        params:
+          param_1: 9
+          param_2: 10
+    output: |
+      params:
+        params: '*'
+
+Download File 1:
+  extends: .template-module-download-file
+  stage: Download File 1
+  variables:
+    input: |
+      params:
+        params:
+          url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/README.md
+          filename: README.md
+
+Download File 2:
+  extends: .template-module-download-file
+  stage: Download File 2
+  variables:
+    input: |
+      params:
+        params:
+          url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/SECURITY.md
+          filename: SECURITY.md
+
+Analyze File:
+  extends: .template-module-analyze-file
+  stage: Analyze File
+  variables:
+    input: |
+      files:
+        pattern: '*'
+      params:
+        params:
+          filename: SECURITY.md
+
+.template-module-calculate:
+  extends: .gitlab_modules_ops_exec_module
+  image: ${QUBER_CLI_MODULE_IMAGE}
+  variables:
+    module_command: run-sample
+
+.template-module-download-file:
+  extends: .gitlab_modules_ops_exec_module
+  image: ${QUBER_CLI_MODULE_IMAGE}
+  variables:
+    module_command: download-file
+    input__params__params__some_common_param_for_this_template: qwe
+    input__params__systems__config_management__url: ${CM_URL}
+    input__params__systems__config_management__username: ${CM_USERNAME}
+    input__params__systems__config_management__password: ${CM_PASSWORD}
+    output__params__params: '*'
+    output__files__pattern: '*'
+
+.template-module-analyze-file:
+  extends: .gitlab_modules_ops_exec_module
+  image: ${QUBER_CLI_MODULE_IMAGE}
+  variables:
+    module_command: analyze-file
+    output__params__params: '*'

@@ -1,0 +1,23 @@
+name: Test CFFI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  job1:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate outputs 1
+        id: step-output-generator1
+        run: |
+          wget https://github.com/LightlessOne/Quber-CLI/releases/download/v0.0.1/quber_cli.pyz
+          unzip -q quber_cli.pyz -d ./module_cli
+          python module_cli --help
