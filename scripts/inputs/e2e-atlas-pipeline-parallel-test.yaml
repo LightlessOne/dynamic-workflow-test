@@ -1,0 +1,72 @@
+apiVersion: v2
+kind: AtlasPipeline
+
+pipeline:
+  id: test-e2e-atlas-pipeline-with-parallel
+  name: Test E2E Atlas Pipeline for python module images
+  vars:
+    QUBER_CLI_MODULE_IMAGE: ghcr.io/lightlessone/quber_cli:master
+    MODULE_TYPE: PYTHON_DOCKER_IMAGE
+    THIS_VAR_IS_A_SECRET: 42
+    TEST_VAR1: 10
+    TEST_VAR2: ${TEST_VAR1}000
+
+  stages:
+    - name: Parallel block 1
+      parallel:
+        test_job1_in_block1:
+          job: template-module-calculate
+          input:
+            params:
+              params:
+                param_1: ${THIS_VAR_IS_A_SECRET}
+                param_2: 20
+                operation: add
+                result_name: RESULT_JOB1_BLOCK_1
+          output:
+            params:
+              params: "*"
+        test_job2_in_block1:
+          job: template-module-calculate
+          input:
+            params:
+              params:
+                param_1: 20
+                param_2: 30
+                operation: add
+                result_name: RESULT_JOB2_BLOCK_1
+          output:
+            params:
+              params: "*"
+        test_job3_in_block1:
+          job: template-module-calculate
+          input:
+            params:
+              params:
+                param_1: 30
+                param_2: 40
+                operation: add
+                result_name: RESULT_JOB3_BLOCK_1
+          output:
+            params:
+              params: "*"
+
+    - name: Execute Module that Summarizes after parallel
+      job: template-module-calculate
+      input:
+        params:
+          params:
+            param_1: ${RESULT_JOB3_BLOCK_1}
+            param_2: ${RESULT_JOB2_BLOCK_1}
+            operation: add
+            result_name: FINAL_RESULT
+      output:
+        params:
+          params: "*"
+
+  jobs:
+    template-module-calculate:
+      path: ${QUBER_CLI_MODULE_IMAGE}
+      type: ${MODULE_TYPE}
+      command: calc
+

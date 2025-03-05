@@ -10,8 +10,11 @@ permissions:
 # +how will we process parallel cases?
 # +we still need STAGES and JOBS, to reuse 'modules_ops' as is
 # +need files test
-# guess we can manage/pass all of those during GENERATOR.py
-# need to check edge-cases on GITHUB_COMMON_ENV_VARS - how limited are we length-wise? will need test with N > 100 generated vars (16+ bytes each)
+# +guess we can manage/pass all of those during GENERATOR.py
+# +need to check edge-cases on GITHUB_COMMON_ENV_VARS - how limited are we length-wise?
+#   tested with generated params:
+#     we fit 300+ params (around 15kb) to one ENV var;
+#     at 25kb - github breaks at queueing our generated workflow;
 
 env:
   GITHUB_COMMON_ENV_VARS: |

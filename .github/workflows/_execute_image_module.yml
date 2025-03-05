@@ -22,6 +22,10 @@ on:
         required: false
         type: string
 
+env:
+  GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/latest/download/github_modules_ops.pyz
+  #GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/download/v0.0.1/github_modules_ops.pyz
+
 jobs:
   execute-module-command:
     runs-on: ubuntu-latest
@@ -30,7 +34,6 @@ jobs:
     env:
       input: ${{ inputs.input }}
       output: ${{ inputs.output }}
-      ENV_STR: ${{ inputs.env_str }}
       CI_JOB_NAME: ${{ inputs.job_id }}
       CI_JOB_STAGE: ${{ inputs.stage_id }}
     steps:
@@ -44,15 +47,11 @@ jobs:
       - name: Execute Module
         id: execute-module-command
         run: |
-          alias github_modules_ops="python /usr/quber/github_modules_ops"
-          alias module_cli="python /usr/quber/module_cli"
-          github_modules_ops prepare-data
-          module_cli ${{ inputs.module_command }} --context_path rt/job_data/context.yaml
-          github_modules_ops store-data
-#          find . | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
-#          cat rt/stored_data/$JOB_ID/stage.yaml
-#          cat rt/job_data/context.yaml
-#          cat rt/job_data/input_params.yaml
+          wget -O /usr/quber/github_modules_ops.pyz $GITHUB_MODULES_OPS_URL
+          unzip -q /usr/quber/github_modules_ops.pyz -d /usr/quber/github_modules_ops
+          python /usr/quber/github_modules_ops prepare-data
+          python /usr/quber/module_cli ${{ inputs.module_command }} --context_path rt/job_data/context.yaml
+          python /usr/quber/github_modules_ops store-data
 
       - name: Upload files
         id: upload-files

@@ -1,1 +1,2 @@
 ./inputs/e2e-atlas-pipeline.yaml
+./inputs/e2e-atlas-config.yaml

@@ -1,5 +1,5 @@
 # Needs to exist on default branch to be executable on our dynamically created ones (sub-workflows) where we override its contents
-name: GENERATED WORKFLOW
+name: GENERATED_WORKFLOW
 
 on:
   workflow_dispatch:

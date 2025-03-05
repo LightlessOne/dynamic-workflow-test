@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: AtlasConfig
+
+global:
+  vars:
+    common:
+      systems:
+        jenkins:
+          COMMON_JENKINS_URL: https://jenkins.woodpecker.com
+          COMMON_JENKINS_USERNAME: jenkins_username
+          COMMON_JENKINS_PASSWORD: ${{ secrets.REPO_SECRET_NUMBER }}
+
+      some_image_module_client:
+        SOME_MODULE_CLIENT_TYPE: PYTHON_DOCKER_IMAGE
+        input:
+          SOME_MODULE_CLIENT_PARAM_FAIL_STRATEGY: NEVER
