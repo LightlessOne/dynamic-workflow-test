@@ -1,5 +1,7 @@
+import json
 import os
 import re
+import subprocess
 import sys
 import yaml
 from textwrap import dedent
@@ -127,11 +129,40 @@ class GithubPipelineData:
 
 
 class VarsCalculation:
+    _GROOVY_SCRIPT = './scripts/groovy_resolver.groovy'
+    _GROOVY_VARS_FILE = './groovy_vars.json'
+
     def __init__(self, known_vars: dict):
         self.known_vars = known_vars
+        self._dump_resolved_vars()
 
     def calculate_expression(self, exp):
         return substitute_string(self.known_vars, expression=exp)
+
+    def evaluate_expression(self, exp):
+        return True == eval(exp, self.known_vars)
+
+    def resolve_when_condition(self, when_condition: str):
+        logger.debug(f"Resolving condition: [{when_condition}]")
+        when_condition_with_substitutes = self.calculate_expression(when_condition)
+        result = self._calculate_groovy_condition(when_condition_with_substitutes)
+        logger.debug(f"'{when_condition_with_substitutes}' -> {result}")
+        return result
+
+    def _calculate_groovy_condition(self, condition: str):
+        output = subprocess.run(
+            ["groovy", VarsCalculation._GROOVY_SCRIPT, condition, VarsCalculation._GROOVY_VARS_FILE],
+            capture_output=True, text=True) # shell=True for local test
+        logger.debug(f"Output from groovy: {output.stdout + output.stderr}")
+        return "true" == output.stdout.strip()
+
+    def _dump_resolved_vars(self):
+        import copy
+        resolved_vars = copy.deepcopy(self.known_vars)
+        for k, v in resolved_vars.items():
+            resolved_vars[k] = self.calculate_expression(v)
+        with open(VarsCalculation._GROOVY_VARS_FILE, 'w') as fs:
+            json.dump(resolved_vars, fs)
 
 
 class PipelineConverter:
@@ -188,6 +219,10 @@ class PipelineConverter:
     def _add_job(self, stage_data):
         stage_id = stage_data.get('stage_id')
         job_id = stage_data.get('job_id')
+        when_condition = stage_data.get("when", {}).get("condition")
+        if when_condition is not None and not self._vars_calc.resolve_when_condition(when_condition):
+            logger.info(f"Job skipped by condition: '{when_condition}' (stage_id: {stage_id}, job_id: {job_id})")
+            return
         self.gh_pipeline_data.register_stage(stage_id=stage_id, job_id=job_id)
         self.gh_pipeline_data.add_job(job_id, self._convert_atlas_stage_to_gh_job(stage_data))
 
@@ -211,6 +246,11 @@ class PipelineConverter:
             github_job["with"]["input"] = yaml.safe_dump(input_params, sort_keys=False)
         if output_params := enriched_stage_data.get("output"):
             github_job["with"]["output"] = yaml.safe_dump(output_params, sort_keys=False)
+        if when_statuses := enriched_stage_data.get("when", {}).get("statuses"):
+            if "SUCCESS" in when_statuses and "FAILURE" in when_statuses:
+                github_job["if"] = "success() || failure()"
+            elif "FAILURE" in when_statuses:
+                github_job["if"] = "failure()"
         return github_job
 
     def add_prepare_env_vars_job(self):
@@ -262,4 +302,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# todo le: to start - only get stuff from local paths, dont bother with urllib/gitlab/github links
+# to start - only get stuff from local paths, dont bother with urllib/gitlab/github links

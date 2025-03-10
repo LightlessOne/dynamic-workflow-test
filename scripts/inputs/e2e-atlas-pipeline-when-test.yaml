@@ -10,19 +10,22 @@ pipeline:
     THIS_VAR_IS_A_SECRET: 42
     TEST_VAR1: 10
     TEST_VAR2: ${TEST_VAR1}000
+    TEST_VAR_FOR_WHEN: clean install or something
+    APP_NAMESPACES: 'ns1, ns2, zookeeper'
+#  '${DEPLOY_MODE} == "Clean Install"' # '"qwerty" in TEST_VAR_FOR_WHEN.lower() and "10000" == TEST_VAR2'
 
   stages:
     - name: Execute Module that Has Condition1
       job: template-module-calculate
       when:
-        condition: ${TEST_VAR1} == "Clean Install"
+        condition: 'APP_NAMESPACES.toLowerCase().contains("zookeeper")'
       input:
         params:
           params:
             param_1: ${THIS_VAR_IS_A_SECRET}
             param_2: 2
             operation: multiply
-            result_name: MULTIPLICATION_RESULT
+            result_name_fake_param_to_fail_this_job: MULTIPLICATION_RESULT
       output:
         params:
           params: "*"
@@ -30,11 +33,11 @@ pipeline:
     - name: Execute Module that Has Condition2
       job: template-module-calculate
       when:
-        statuses: SUCCESS, UNSTABLE, FAILURE
+        statuses: SUCCESS, FAILURE
       input:
         params:
           params:
-            param_1: ${MULTIPLICATION_RESULT}
+            param_1: ${TEST_VAR1}
             param_2: ${TEST_VAR2}
             operation: add
             result_name: FINAL_RESULT
