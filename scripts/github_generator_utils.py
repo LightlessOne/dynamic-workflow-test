@@ -83,6 +83,30 @@ def recursive_merge(source_dict: dict, target_dict: dict):
     return source
 
 
+def inflate_dict(source_dict: dict):
+    """Converts dict with composite keys (like 'parent2.parent1.child_object') into corresponding inflated dict"""
+    result = copy.deepcopy(source_dict)
+    for key in list(result.keys()):
+        value = result[key]
+        if isinstance(value, dict):
+            value = inflate_dict(value)
+        if '.' in key:
+            if (key_parts := [part for part in key.split('.') if part]) and len(key_parts) > 1:
+                for key_index in range(len(key_parts)):
+                    changed_dict = result
+                    for i in range(key_index):
+                        changed_dict = changed_dict[key_parts[i]]
+                    if key_parts[key_index] in changed_dict and isinstance(changed_dict[key_parts[key_index]], dict):
+                        if key_index == len(key_parts) - 1:
+                            changed_dict[key_parts[key_index]] = recursive_merge(changed_dict[key_parts[key_index]], value)
+                    else:
+                        changed_dict[key_parts[key_index]] = value if key_index == len(key_parts) - 1 else {}
+                result.pop(key)
+        else:
+            result[key] = value
+    return result
+
+
 UNSAFE_JOBNAME_CHARS_PATTERN = re.compile(r'[^\w\-_]')
 def get_safe_gh_jobname(s: str):
     return re.sub(UNSAFE_JOBNAME_CHARS_PATTERN, '_', s)

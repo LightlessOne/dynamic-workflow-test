@@ -17,7 +17,6 @@ from github_generator_utils import (get_id_or_name, cast_to_string, parse_params
 logger = logging.getLogger(__name__)
 
 
-#def _trim_lines(multiline): return [trimmed_ln for ln in multiline.splitlines() if (trimmed_ln:=ln.strip())]
 def _trim_lines(multiline): return [trimmed_ln for ln in re.split(r'[\n\r;]', multiline) if (trimmed_ln:=ln.strip())]
 def _dict_subset(src_dict, keys): return {k: src_dict[k] for k in keys if k in src_dict}
 
@@ -38,6 +37,10 @@ _ALL_PIPELINE_PARAM_NAMES = [
         *_PASS_DOWNSTREAM_PARAM_NAMES,
 ]
 _ALL_PIPELINE_PARAMS = _dict_subset(os.environ, _ALL_PIPELINE_PARAM_NAMES)
+
+_PIPELINE_INFO_PARAM_NAMES = [
+    'id', 'name'
+]
 
 logger.info('Pipeline has started with params:\n%s', yaml.safe_dump(_ALL_PIPELINE_PARAMS, sort_keys=False))
 
@@ -61,6 +64,14 @@ class AtlasPipelineData:
     def process_params(self, content: str):
         self._input_vars.update(parse_params_from_string(content))
 
+    def get_info(self) -> dict:
+        info = {}
+        if pipeline_descriptor_info := self._pipeline_descriptor.get('pipeline', {}):
+            for param_name in _PIPELINE_INFO_PARAM_NAMES:
+                if param := pipeline_descriptor_info.get(param_name):
+                    info[param_name] = param
+        return info
+
     def get_vars(self) -> dict:
         all_vars = {}  # pipeline vars are overridden by config vars and then by input vars
         if pipeline_vars := self._pipeline_descriptor.get('pipeline', {}).get('vars'):  # may present but be None
@@ -80,11 +91,11 @@ class AtlasPipelineData:
 
 
 class GithubPipelineData:
-    _GMO_LOG_LEVEL = _LOG_LEVEL
-    _GMO_WORKFLOW_NAME = "GENERATED_WORKFLOW"
-    _GMO_COMMON_ENV_VARS = "GITHUB_COMMON_ENV_VARS"
+    _WORKFLOW_NAME = "GENERATED_WORKFLOW"
+    _COMMON_ENV_VARS = "GITHUB_COMMON_ENV_VARS"
 
     def __init__(self):
+        self.pipeline_info = {}
         self.vars = {}
         self.jobs = {}
         self.job_templates = {}
@@ -105,23 +116,26 @@ class GithubPipelineData:
 
     def get_all_vars(self):
         return {
-            **({'GITHUB_MODULES_OPS_LOG_LEVEL': self._GMO_LOG_LEVEL} if self._GMO_LOG_LEVEL else {}),
+            **({'GITHUB_MODULES_OPS_LOG_LEVEL': _LOG_LEVEL} if _LOG_LEVEL else {}),
             **self.vars
         }
 
     def get_pipeline(self):
         pipeline = {
-            'name': self._GMO_WORKFLOW_NAME,
+            'name': self._WORKFLOW_NAME,
             'on': {
                 'workflow_dispatch': {}
             },
             'permissions': {
-                'contents': 'read'
+                'actions': 'read',
+                'contents': 'read',
             }
         }
+        if pipeline_name := self.pipeline_info.get("name"):
+            pipeline['run-name'] = pipeline_name
         if common_env_vars := self.get_all_vars():
             pipeline['env'] = {
-                self._GMO_COMMON_ENV_VARS: yaml.safe_dump(common_env_vars, sort_keys=False)
+                self._COMMON_ENV_VARS: yaml.safe_dump(common_env_vars, sort_keys=False)
             }
         if self.jobs:
             pipeline['jobs'] = self.jobs
@@ -129,12 +143,8 @@ class GithubPipelineData:
 
 
 class VarsCalculation:
-    _GROOVY_SCRIPT = './scripts/groovy_resolver.groovy'
-    _GROOVY_VARS_FILE = './groovy_vars.json'
-
     def __init__(self, known_vars: dict):
         self.known_vars = known_vars
-        self._dump_resolved_vars()
 
     def calculate_expression(self, exp):
         return substitute_string(self.known_vars, expression=exp)
@@ -145,24 +155,9 @@ class VarsCalculation:
     def resolve_when_condition(self, when_condition: str):
         logger.debug(f"Resolving condition: [{when_condition}]")
         when_condition_with_substitutes = self.calculate_expression(when_condition)
-        result = self._calculate_groovy_condition(when_condition_with_substitutes)
+        result = self.evaluate_expression(when_condition_with_substitutes)
         logger.debug(f"'{when_condition_with_substitutes}' -> {result}")
         return result
-
-    def _calculate_groovy_condition(self, condition: str):
-        output = subprocess.run(
-            ["groovy", VarsCalculation._GROOVY_SCRIPT, condition, VarsCalculation._GROOVY_VARS_FILE],
-            capture_output=True, text=True) # shell=True for local test
-        logger.debug(f"Output from groovy: {output.stdout + output.stderr}")
-        return "true" == output.stdout.strip()
-
-    def _dump_resolved_vars(self):
-        import copy
-        resolved_vars = copy.deepcopy(self.known_vars)
-        for k, v in resolved_vars.items():
-            resolved_vars[k] = self.calculate_expression(v)
-        with open(VarsCalculation._GROOVY_VARS_FILE, 'w') as fs:
-            json.dump(resolved_vars, fs)
 
 
 class PipelineConverter:
@@ -177,6 +172,9 @@ class PipelineConverter:
         self._atlas_vars = atlas_pipeline_data.get_vars()
         self._vars_calc = VarsCalculation(self._atlas_vars)
         self.gh_pipeline_data = GithubPipelineData()
+
+    def convert_pipeline_info(self):
+        self.gh_pipeline_data.pipeline_info = self.atlas_pipeline_data.get_info()
 
     def convert_atlas_vars(self):
         for k, v in self._atlas_vars.items():
@@ -219,10 +217,6 @@ class PipelineConverter:
     def _add_job(self, stage_data):
         stage_id = stage_data.get('stage_id')
         job_id = stage_data.get('job_id')
-        when_condition = stage_data.get("when", {}).get("condition")
-        if when_condition is not None and not self._vars_calc.resolve_when_condition(when_condition):
-            logger.info(f"Job skipped by condition: '{when_condition}' (stage_id: {stage_id}, job_id: {job_id})")
-            return
         self.gh_pipeline_data.register_stage(stage_id=stage_id, job_id=job_id)
         self.gh_pipeline_data.add_job(job_id, self._convert_atlas_stage_to_gh_job(stage_data))
 
@@ -238,14 +232,16 @@ class PipelineConverter:
                 'module_command': enriched_stage_data.get("command"),
             }
         }
-        if job_name := enriched_stage_data.get("name"):
-            github_job["name"] = job_name
+        # if job_name := enriched_stage_data.get("name"):
+        #     github_job["name"] = job_name
         if depends := self.gh_pipeline_data.get_previous_stage_jobs():
             github_job["needs"] = list(depends)
         if input_params := enriched_stage_data.get("input"):
             github_job["with"]["input"] = yaml.safe_dump(input_params, sort_keys=False)
         if output_params := enriched_stage_data.get("output"):
             github_job["with"]["output"] = yaml.safe_dump(output_params, sort_keys=False)
+        if when_condition := enriched_stage_data.get("when", {}).get("condition"):
+            github_job["with"]["when"] = when_condition
         if when_statuses := enriched_stage_data.get("when", {}).get("statuses"):
             if "SUCCESS" in when_statuses and "FAILURE" in when_statuses:
                 github_job["if"] = "success() || failure()"
@@ -277,6 +273,7 @@ class PipelineConverter:
                 """)))
 
     def convert(self):
+        self.convert_pipeline_info()
         self.convert_atlas_vars()
         self.convert_atlas_jobs_to_job_templates()
         self.add_prepare_env_vars_job()

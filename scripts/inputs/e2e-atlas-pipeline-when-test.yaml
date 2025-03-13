@@ -3,7 +3,7 @@ kind: AtlasPipeline
 
 pipeline:
   id: test-e2e-atlas-pipeline-with-conditions
-  name: Test E2E Atlas Pipeline for python module images
+  name: Test E2E Atlas Pipeline with WHEN
   vars:
     QUBER_CLI_MODULE_IMAGE: ghcr.io/lightlessone/quber_cli:master
     MODULE_TYPE: PYTHON_DOCKER_IMAGE

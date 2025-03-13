@@ -21,6 +21,9 @@ on:
       output:
         required: false
         type: string
+      when:
+        required: false
+        type: string
 
 env:
   GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/latest/download/github_modules_ops.pyz
@@ -34,6 +37,7 @@ jobs:
     env:
       input: ${{ inputs.input }}
       output: ${{ inputs.output }}
+      when: ${{ inputs.when }}
       CI_JOB_NAME: ${{ inputs.job_id }}
       CI_JOB_STAGE: ${{ inputs.stage_id }}
     steps:
@@ -44,38 +48,48 @@ jobs:
           path: rt/stored_data
           merge-multiple: true
 
-### Possible solution for WHEN resolving:
-# generator just adds when as string-formatted-yaml (same as input/output) (and all jobs have 'continue-on-error=true')
-# prepare - prepares data, resolves 'when' to env var (like env.NEEDS_TO_EXECUTE in $GITHUB_ENV)
-# execute step has 'continue-on-error' (so 'store' always happens, and it needs to know previous step failed somehow) and 'if: env.NEEDS_TO_EXECUTE'
-# store-data saves 'job' status
-#   so next to 'params.yaml' we'll have 'status.yaml' with 'status: SUCCESS/FAILURE/SKIPPED'
-
-### But then we'll always fetch image, start subflow etc. for each possible job
-# which is not optimal for cases like
-#   condition: APP_NAME.toLowerCase() in ['cow', 'decoco', 'ssm', 'composite-status-metrics-producer', 'env-checker', 'log-exporter' ]
-# another possible solution: resolving 'when.condition' at Generator stage, and just not creating skipped jobs
-# we'll still have to check 'when.statuses' during execution - or do we??
-# generate jobs with ["if: always()" or "if: success() || failure()"] - if they have FAILURE in their statuses?
-
-### Second options looks way simpler and more predictable
-
-### As for resolving groovy when.condition:
-# 1. we'll need to transform conditions from groovy to python somehow first (so we def wont support everything, only basic stuff)
-#    looks like a complex lexical-parser, probably too much
-# 2. Just using groovy binaries (pass it expression and context)
-
-      - name: Execute Module
-        id: execute-module-command
+      - name: Prepare Data
+        id: prepare-data
         run: |
           wget -O /usr/quber/github_modules_ops.pyz $GITHUB_MODULES_OPS_URL
           unzip -q /usr/quber/github_modules_ops.pyz -d /usr/quber/github_modules_ops
           python /usr/quber/github_modules_ops prepare-data
-          python /usr/quber/module_cli ${{ inputs.module_command }} --context_path rt/job_data/context.yaml
+
+      - name: Execute Module Command
+        id: execute-module-command
+        run: python /usr/quber/module_cli ${{ inputs.module_command }} --context_path rt/job_data/context.yaml
+
+      - name: Store Data
+        id: store-data
+        if: always()
+        run: |
           python /usr/quber/github_modules_ops store-data
+          mkdir -p rt/stored_data/${{inputs.stage_id}}/${{inputs.job_id}}/
+
+      - name: Store Github IDs
+        id: store-github-data
+        if: always()
+        shell: python
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_JOB_NAME: ${{ inputs.job_id }} / execute-module-command
+        run: |
+          import json, os
+          from urllib.request import urlopen, Request
+          url = f"{os.getenv('GITHUB_API_URL')}/repos/{os.getenv('GITHUB_REPOSITORY')}/actions/runs/{os.getenv('GITHUB_RUN_ID')}/jobs"
+          httprequest = Request(url, headers={"Authorization": f"Bearer {os.getenv('GH_TOKEN')}"})
+          with urlopen(httprequest) as response:
+              jobs = json.loads(response.read().decode())
+          current_job = [job for job in jobs["jobs"] if job["name"] == os.getenv('CURRENT_JOB_NAME')]
+          if not current_job:
+              raise Exception("Could not find current job data in github response!")
+          current_job = current_job[0]
+          with open('rt/stored_data/${{inputs.stage_id}}/${{inputs.job_id}}/stats.yaml', 'w') as fs:
+              fs.write(f"run_id: {current_job['run_id']}\njob_id: {current_job['id']}")
 
       - name: Upload files
         id: upload-files
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.job_id }}
