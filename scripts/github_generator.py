@@ -1,7 +1,5 @@
-import json
 import os
 import re
-import subprocess
 import sys
 import yaml
 from textwrap import dedent

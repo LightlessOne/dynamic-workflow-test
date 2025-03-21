@@ -26,7 +26,7 @@ permissions:
   contents: write
 
 jobs:
-  prepare-dynamic-action:
+  generate-and-execute-workflow:
     runs-on: ubuntu-latest
     env:
       PIPELINE_DATA: ${{ inputs.PIPELINE_DATA }}
@@ -40,13 +40,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Generate GENERATED.yml
+      - name: Generate Github-native Workflow
         run: |
           pip install pyyaml
           python scripts/github_generator.py
           cp generated.yml ./.github/workflows/GENERATED.yml
 
-      - name: Push GENERATED.yml to new branch
+      - name: Push GENERATED.yml
         run: |
           git checkout -b sub_flow_${{ github.run_number }}
           git add ./.github/workflows/GENERATED.yml
@@ -56,11 +56,17 @@ jobs:
           git push --set-upstream origin sub_flow_${{ github.run_number }}
 
       - name: Run GENERATED.yml in that branch (sub_flow_${{ github.run_number }})
+        id: run-generated-workflow
         if: ${{ !inputs.DRY_RUN }}
-        run: |
-          gh workflow run 'GENERATED_WORKFLOW' --ref sub_flow_${{ github.run_number }}
-          echo "### Workflow generated and executed:" >> $GITHUB_STEP_SUMMARY
-          echo "- Check resulting [GENERATED.yml](${{ github.server_url }}/${{ github.repository }}/blob/sub_flow_${{ github.run_number }}/.github/workflows/GENERATED.yml)" >> $GITHUB_STEP_SUMMARY
-          echo "- Check [workflow execution](${{ github.server_url }}/${{ github.repository }}/actions/workflows/GENERATED.yml?query=branch%3Asub_flow_${{ github.run_number }})" >> $GITHUB_STEP_SUMMARY
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          GENERATED_WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/blob/sub_flow_${{ github.run_number }}/.github/workflows/GENERATED.yml
+        run: python scripts/run_workflow_and_report.py "GENERATED_WORKFLOW" "sub_flow_${{ github.run_number }}"
+
+      - name: Upload Result
+        id: upload-files
+        if: ${{ !inputs.DRY_RUN }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: "result"
+          path: "result.yaml"
