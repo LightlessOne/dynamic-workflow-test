@@ -41,8 +41,10 @@ jobs:
           python-version: '3.11'
 
       - name: Generate Github-native Workflow
+        env:
+          GH_PRIVATE_READ_TOKEN: ${{ secrets.GH_PRIVATE_READ_TOKEN }}
         run: |
-          pip install pyyaml
+          pip install -r ./scripts/requirements.txt
           python scripts/github_generator.py
           cp generated.yml ./.github/workflows/GENERATED.yml
 

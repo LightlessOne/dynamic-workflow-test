@@ -7,5 +7,5 @@ export PIPELINE_DATA=$(cat ./inputs/PIPELINE_DATA.txt)
 
 #echo "$PIPELINE_VARS" >> qwe.yaml
 
-pip install python-gitlab pyyaml
+pip install -r requirements.txt
 python -m github_generator

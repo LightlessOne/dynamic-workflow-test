@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import requests
 import yaml
 from textwrap import dedent
 
@@ -278,13 +279,29 @@ class PipelineConverter:
         self.convert_atlas_stages_to_jobs()
 
 
+def process_external_url(url: str):
+    if "raw.githubusercontent.com" in url.lower():
+        response = requests.get(url)
+        if response.status_code == 404:
+            headers = {"Authorization": f"token {os.getenv('GH_PRIVATE_READ_TOKEN', '')}"}
+            response = requests.get(url, headers=headers)
+            if response.status_code == 404:
+                raise Exception(f"Invalid URL or access token - {url}")
+        return response.text
+    else:
+        return requests.get(url).text
+
+
 def main():
     atlas_pipeline_data = AtlasPipelineData()
     atlas_pipeline_data.process_params('\n'.join(_trim_lines(_PIPELINE_VARS)))
 
     for url in _trim_lines(_PIPELINE_DATA):
-        with open(url) as fs:  # for local tests
-            file_content = fs.read()
+        if url.lower().startswith("http"):
+            file_content = process_external_url(url)
+        else:
+            with open(url) as fs:  # for local tests
+                file_content = fs.read()
         atlas_pipeline_data.process_config(file_content)
 
     pipeline_converter = PipelineConverter(atlas_pipeline_data)
@@ -296,5 +313,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-# to start - only get stuff from local paths, dont bother with urllib/gitlab/github links
