@@ -88,6 +88,9 @@ class AtlasPipelineData:
     def get_jobs(self) -> dict:
         return self._pipeline_descriptor.get('pipeline', {}).get('jobs') or {}
 
+    def get_configuration(self) -> dict:
+        return self._pipeline_descriptor.get('pipeline', {}).get('configuration') or {}
+
 
 class GithubPipelineData:
     _WORKFLOW_NAME = "GENERATED_WORKFLOW"
@@ -163,7 +166,9 @@ class PipelineConverter:
     _INCLUDE_ATLAS_STAGES = _trim_lines(_GENERATOR_INCLUDE_ATLAS_STAGES)
     _ALLOW_FAILURE_ALL_JOBS = _GENERATOR_ALLOW_FAILURE_ALL_JOBS == 'true'
     _DEFAULT_MODULE_IMAGE_REUSABLE_FLOW = './.github/workflows/_execute_image_module.yml'
+    _SAVE_PIPELINE_OUTPUT_REUSABLE_FLOW = './.github/workflows/_save_pipeline_output.yml'
     _DEFAULT_PREPARE_JOB_ID = 'prepare-common-vars'
+    _DEFAULT_SAVE_JOB_ID = 'save-pipeline-output'
     _REQUIRED_ATLAS_STAGE_FIELDS = ["path", "type", "command", "name"]
 
     def __init__(self, atlas_pipeline_data: AtlasPipelineData):
@@ -271,12 +276,28 @@ class PipelineConverter:
                       path: rt/stored_data
                 """)))
 
+    def add_save_output_job(self):
+        if not self.atlas_pipeline_data.get_configuration():
+            return
+        self.gh_pipeline_data.register_stage(stage_id=PipelineConverter._DEFAULT_SAVE_JOB_ID,
+                                             job_id=PipelineConverter._DEFAULT_SAVE_JOB_ID)
+        save_output_github_job = {
+            'uses': PipelineConverter._SAVE_PIPELINE_OUTPUT_REUSABLE_FLOW,
+            'needs': list(self.gh_pipeline_data.get_previous_stage_jobs()),
+            'if': "success() || failure()",
+            'with': {
+                'input': yaml.safe_dump(self.atlas_pipeline_data.get_configuration().get('output', {}), sort_keys=False),
+            }
+        }
+        self.gh_pipeline_data.add_job(PipelineConverter._DEFAULT_SAVE_JOB_ID, save_output_github_job)
+
     def convert(self):
         self.convert_pipeline_info()
         self.convert_atlas_vars()
         self.convert_atlas_jobs_to_job_templates()
         self.add_prepare_env_vars_job()
         self.convert_atlas_stages_to_jobs()
+        self.add_save_output_job()
 
 
 def process_external_url(url: str):

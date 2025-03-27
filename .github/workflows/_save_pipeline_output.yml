@@ -1,0 +1,41 @@
+name: _Save_Pipeline_Output
+
+on:
+  workflow_call:
+    inputs:
+      input:
+        required: true
+        type: string
+
+env:
+  GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/latest/download/github_modules_ops.pyz
+  #GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/download/v0.0.1/github_modules_ops.pyz
+
+jobs:
+  save-pipeline-output:
+    runs-on: ubuntu-latest
+    env:
+      input: ${{ inputs.input }}
+    steps:
+      - name: Download files
+        id: download-files
+        uses: actions/download-artifact@v4
+        with:
+          path: rt/stored_data
+          merge-multiple: true
+
+      - name: Prepare Data
+        id: prepare-data
+        run: |
+          mkdir -p ./quber
+          wget -O ./quber/github_modules_ops.pyz $GITHUB_MODULES_OPS_URL
+          unzip -q ./quber/github_modules_ops.pyz -d ./quber/github_modules_ops
+          python ./quber/github_modules_ops prepare-data
+# todo le: temp implementation, needs additional processing in modules-ops and generator
+
+      - name: Upload files
+        id: upload-files
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline_output
+          path: rt/job_data
