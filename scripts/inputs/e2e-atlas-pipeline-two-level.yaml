@@ -1,0 +1,58 @@
+apiVersion: v2
+kind: AtlasPipeline
+
+pipeline:
+  id: test-e2e-atlas-pipeline
+  name: Atlas Pipeline that launches another Atlas Pipeline
+  vars:
+    QUBER_CLI_MODULE_IMAGE: ghcr.io/lightlessone/quber_cli:master
+    MODULE_TYPE: PYTHON_DOCKER_IMAGE
+    THIS_VAR_IS_A_SECRET: ${{ secrets.REPO_SECRET_NUMBER }}
+    GH_TOKEN_FOR_CHILD: ${{ secrets.GH_TOKEN_FOR_CHILD }}
+    TEST_VAR1: 9
+    TEST_VAR2: ${TEST_VAR1}000
+
+  stages:
+    - name: Do something first - $TEST_VAR2
+      job: template-module-calculate
+      input:
+        params:
+          params:
+            param_1: ${TEST_VAR1}
+            param_2: 10
+            operation: add
+            result_name: RESULT
+      output:
+        params:
+          params: "*"
+
+    - name: Launch and wait for another Atlas Pipeline
+      job: template-module-run-gh-pipeline
+      input:
+        params:
+          params:
+            pipeline_owner: "LightlessOne"
+            pipeline_repo_name: "dynamic-workflow-test"
+            pipeline_workflow_file_name: "EXECUTE_ATLAS_PIPELINE.yml"
+            pipeline_branch: "master"
+            pipeline_params:
+              PIPELINE_DATA: "./scripts/inputs/e2e-atlas-pipeline.yaml"
+              DRY_RUN: false
+              RUN_NAME: "CHILD_FROM_ATLAS_PIPELINE"
+          systems:
+            github:
+              password: ${GH_TOKEN_FOR_CHILD}
+      output:
+        params:
+          params: "*"
+
+  jobs:
+    template-module-calculate:
+      path: ${QUBER_CLI_MODULE_IMAGE}
+      type: ${MODULE_TYPE}
+      command: calc
+
+    template-module-run-gh-pipeline:
+      path: ${QUBER_CLI_MODULE_IMAGE}
+      type: ${MODULE_TYPE}
+      command: github-run-pipeline
