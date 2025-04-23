@@ -70,8 +70,11 @@ jobs:
         if: ${{ !inputs.DRY_RUN }}
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          TARGET_WORKFLOW_FILE: GENERATED.yml
+          TARGET_BRANCH: sub_flow_${{ github.run_number }}
           GENERATED_WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/blob/sub_flow_${{ github.run_number }}/.github/workflows/GENERATED.yml
-        run: python scripts/run_workflow_and_report.py "GENERATED_WORKFLOW" "sub_flow_${{ github.run_number }}"
+        run: python scripts/run_workflow_and_report.py
 
       - name: Upload Result
         id: upload-files

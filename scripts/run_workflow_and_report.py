@@ -1,46 +1,27 @@
-import json
 import os
-import subprocess
 import sys
 import yaml
-from time import sleep
+from qubership_pipelines_common_library.v1.github_client import GithubClient
 
 import logging
 logging.basicConfig(stream=sys.stdout,
                     format='[%(asctime)s] [%(levelname)-5s] [%(filename)s:%(lineno)-3s] %(message)s',
                     level=logging.DEBUG)
 
-WORKFLOW_ID = sys.argv[1]
-GENERATED_BRANCH_NAME = sys.argv[2]
+WORKFLOW_FILE = os.getenv('TARGET_WORKFLOW_FILE', 'UNDEFINED')
+REPO_FULL_NAME = os.getenv('REPO_FULL_NAME', 'UNDEFINED')
+TARGET_BRANCH = os.getenv('TARGET_BRANCH', 'UNDEFINED')
+GH_TOKEN = os.getenv('GH_TOKEN', 'UNDEFINED')
+
 RETRY_ATTEMPTS = int(os.getenv('RUN_WORKFLOW_RETRY_ATTEMPTS', '6'))
 RETRY_TIMEOUT = int(os.getenv('RUN_WORKFLOW_RETRY_TIMEOUT', '5'))
 GENERATED_BRANCHES_POOL_SIZE = int(os.getenv('GENERATED_BRANCHES_POOL_SIZE', '40'))
+GH = GithubClient(GH_TOKEN)
 
 
 def run_workflow():
-    subprocess.run(
-        f"gh workflow run '{WORKFLOW_ID}' --ref '{GENERATED_BRANCH_NAME}'",
-        capture_output=True, text=True, shell=True
-    )
-
-
-def get_workflow_run_data():
-    for i in range(RETRY_ATTEMPTS):
-        try:
-            logging.debug(f"polling attempt {i + 1}...")
-            output = subprocess.run(
-                f"gh run list --branch {GENERATED_BRANCH_NAME} --json databaseId,url,headBranch,createdAt",
-                capture_output=True, text=True, shell=True
-            ).stdout
-            logging.debug(f"output: {output}")
-            runs = json.loads(output if output.strip() else "[]")
-            if len(runs) > 0:
-                logging.debug(f"returning {runs[0]}")
-                return runs[0]
-        except Exception as e:
-            logging.error(f"Error during queued run polling: {e}")
-        sleep(RETRY_TIMEOUT)
-    return None
+    repo_parts = REPO_FULL_NAME.split("/")
+    return GH.trigger_workflow(repo_parts[0], repo_parts[1], WORKFLOW_FILE, TARGET_BRANCH, {})
 
 
 def save_summary(data):
@@ -64,7 +45,12 @@ def save_artifact(data):
 
 
 if __name__ == '__main__':
-    run_workflow()
-    run_data = get_workflow_run_data()
-    save_summary(run_data)
-    save_artifact(run_data)
+    execution_info = run_workflow()
+    execution_data = {
+        "id": execution_info.get_id(),
+        "createdAt": execution_info.get_time_start(),
+        "branch": TARGET_BRANCH,
+        "url": execution_info.get_url(),
+    }
+    save_summary(execution_data)
+    save_artifact(execution_data)
