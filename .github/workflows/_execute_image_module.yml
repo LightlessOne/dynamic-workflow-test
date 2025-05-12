@@ -54,9 +54,15 @@ jobs:
           wget -O /usr/quber/github_modules_ops.pyz $GITHUB_MODULES_OPS_URL
           unzip -q /usr/quber/github_modules_ops.pyz -d /usr/quber/github_modules_ops
           python /usr/quber/github_modules_ops prepare-data
+          if [ -e rt/job_data/logs/.when_condition_false ]; then
+               echo "when_condition=false" >> "$GITHUB_OUTPUT"
+          else
+               echo "when_condition=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Execute Module Command
         id: execute-module-command
+        if: ${{ steps.prepare-data.outputs.when_condition == 'true' }}
         run: python /usr/quber/module_cli ${{ inputs.module_command }} --context_path rt/job_data/context.yaml
 
       - name: Store Data
@@ -67,6 +73,7 @@ jobs:
           mkdir -p rt/stored_data/${{inputs.stage_id}}/${{inputs.job_id}}/
 
       - name: Store Github IDs
+# todo le: temp impl, before modules-ops release
         id: store-github-data
         if: always()
         shell: python

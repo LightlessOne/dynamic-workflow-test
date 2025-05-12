@@ -244,8 +244,8 @@ class PipelineConverter:
             github_job["with"]["input"] = yaml.safe_dump(input_params, sort_keys=False)
         if output_params := enriched_stage_data.get("output"):
             github_job["with"]["output"] = yaml.safe_dump(output_params, sort_keys=False)
-        if when_condition := enriched_stage_data.get("when", {}).get("condition"):
-            github_job["with"]["when"] = when_condition
+        if when_condition := enriched_stage_data.get("when"):
+            github_job["with"]["when"] = yaml.safe_dump(when_condition, sort_keys=False)
         if when_statuses := enriched_stage_data.get("when", {}).get("statuses"):
             if "SUCCESS" in when_statuses and "FAILURE" in when_statuses:
                 github_job["if"] = "success() || failure()"
@@ -277,6 +277,7 @@ class PipelineConverter:
                 """)))
 
     def add_save_output_job(self):
+        # todo le: temp impl, before modules-ops release
         if not self.atlas_pipeline_data.get_configuration():
             return
         self.gh_pipeline_data.register_stage(stage_id=PipelineConverter._DEFAULT_SAVE_JOB_ID,
