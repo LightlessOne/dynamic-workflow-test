@@ -3,19 +3,20 @@ name: _Save_Pipeline_Output
 on:
   workflow_call:
     inputs:
-      input:
+      output:
         required: true
         type: string
 
 env:
-  GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/latest/download/github_modules_ops.pyz
+  GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/latest/download/qubership_pipelines_modules_ops.pyz
+  #GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/latest/download/github_modules_ops.pyz
   #GITHUB_MODULES_OPS_URL: https://github.com/LightlessOne/Quber-CLI/releases/download/v0.0.1/github_modules_ops.pyz
 
 jobs:
   save-pipeline-output:
     runs-on: ubuntu-latest
     env:
-      input: ${{ inputs.input }}
+      output: ${{ inputs.output }}
     steps:
       - name: Download files
         id: download-files
@@ -24,13 +25,16 @@ jobs:
           path: rt/stored_data
           merge-multiple: true
 
-      - name: Prepare Data
-        id: prepare-data
+      - name: Store Data
+        id: store-data
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_JOB_NAME: save-pipeline-output / save-pipeline-output
         run: |
           mkdir -p ./quber
           wget -O ./quber/github_modules_ops.pyz $GITHUB_MODULES_OPS_URL
           unzip -q ./quber/github_modules_ops.pyz -d ./quber/github_modules_ops
-          python ./quber/github_modules_ops prepare-data
+          python ./quber/github_modules_ops store-data --root rt --stage save-pipeline-output --job save-pipeline-output
 # todo le: temp implementation, needs additional processing in modules-ops and generator
 
       - name: Upload files
