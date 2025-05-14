@@ -1,11 +1,124 @@
-# Needs to exist on default branch to be executable on our dynamically created ones (sub-workflows) where we override its contents
 name: GENERATED_WORKFLOW
-
 on:
-  workflow_dispatch:
-
+  workflow_dispatch: {}
+permissions:
+  actions: read
+  contents: read
+run-name: Fresh Modules-Ops full
+env:
+  GITHUB_COMMON_ENV_VARS: |
+    QUBER_CLI_MODULE_IMAGE: ghcr.io/lightlessone/quber_cli:master
+    MODULE_TYPE: PYTHON_DOCKER_IMAGE
+    THIS_VAR_IS_A_SECRET: ${{ secrets.REPO_SECRET_NUMBER }}
+    TEST_VAR1: '10'
+    TEST_VAR2: ${TEST_VAR1}000
 jobs:
-  job:
-    name: test
+  prepare-common-vars:
+    name: Prepare Common Env Vars
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - name: Save ENV VARS to stored_data
+      run: |
+        mkdir -p rt/stored_data/prepare-common-vars/job
+        echo "$GITHUB_COMMON_ENV_VARS" >> rt/stored_data/prepare-common-vars/job/params.yaml
+        echo "name: prepare-common-vars" >> rt/stored_data/prepare-common-vars/stage.yaml
+        echo "previous: []" >> rt/stored_data/prepare-common-vars/stage.yaml
+    - name: Upload files
+      uses: actions/upload-artifact@v4
+      with:
+        name: prepare-common-vars
+        path: rt/stored_data
+  Modules_That_Adds:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Modules_That_Adds
+      job_id: Modules_That_Adds
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${TEST_VAR1}
+            param_2: 10
+            operation: add
+            result_name: CALCULATED_PASS_RATE
+      output: |
+        params:
+          params: '*'
+    needs:
+    - prepare-common-vars
+  Modules_That_Will_Be_Skipped:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Modules_That_Will_Be_Skipped
+      job_id: Modules_That_Will_Be_Skipped
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${TEST_VAR1}
+            param_2: 1
+            operation: add
+            result_name: CALCULATED_PASS_RATE2
+      output: |
+        params:
+          params: '*'
+      when: |
+        condition: TEST_VAR1 != "9"
+    needs:
+    - Modules_That_Adds
+  Modules_That_Downloads_file:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Modules_That_Downloads_file
+      job_id: Modules_That_Downloads_file
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: download-file
+      input: |
+        params:
+          params:
+            url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/README.md
+            filename: README.md
+      output: |
+        params:
+          params: '*'
+        files:
+          FILE_KEY3: README.md
+    needs:
+    - Modules_That_Will_Be_Skipped
+  Modules_That_Reports:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Modules_That_Reports
+      job_id: Modules_That_Reports
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${CALCULATED_PASS_RATE}
+            param_2: 10
+            operation: add
+            result_name: RESULT2
+      output: |
+        params:
+          params: '*'
+      report: |
+        something: something?
+    needs:
+    - Modules_That_Downloads_file
+  save-pipeline-output:
+    uses: ./.github/workflows/_save_pipeline_output.yml
+    needs:
+    - Modules_That_Reports
+    if: success() || failure()
+    with:
+      output: |
+        params:
+          PASS_RATE: ${CALCULATED_PASS_RATE}
+        params_secure:
+          SOME_SECRET_TOKEN: ${THIS_VAR_IS_A_SECRET}
+        files:
+          FILE_KEY3: params-output.yaml
+        pipeline_output: yes, please
