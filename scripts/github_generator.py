@@ -244,6 +244,8 @@ class PipelineConverter:
             github_job["with"]["input"] = yaml.safe_dump(input_params, sort_keys=False)
         if output_params := enriched_stage_data.get("output"):
             github_job["with"]["output"] = yaml.safe_dump(output_params, sort_keys=False)
+        if report_params := enriched_stage_data.get("report"):
+            github_job["with"]["report"] = yaml.safe_dump(report_params, sort_keys=False)
         if when_condition := enriched_stage_data.get("when"):
             github_job["with"]["when"] = yaml.safe_dump(when_condition, sort_keys=False)
         if when_statuses := enriched_stage_data.get("when", {}).get("statuses"):
@@ -282,12 +284,14 @@ class PipelineConverter:
             return
         self.gh_pipeline_data.register_stage(stage_id=PipelineConverter._DEFAULT_SAVE_JOB_ID,
                                              job_id=PipelineConverter._DEFAULT_SAVE_JOB_ID)
+        output_cfg = self.atlas_pipeline_data.get_configuration().get('output', {})
+        output_cfg['pipeline_output'] = 'yes, please'
         save_output_github_job = {
             'uses': PipelineConverter._SAVE_PIPELINE_OUTPUT_REUSABLE_FLOW,
             'needs': list(self.gh_pipeline_data.get_previous_stage_jobs()),
             'if': "success() || failure()",
             'with': {
-                'input': yaml.safe_dump(self.atlas_pipeline_data.get_configuration().get('output', {}), sort_keys=False),
+                'output': yaml.safe_dump(output_cfg, sort_keys=False),
             }
         }
         self.gh_pipeline_data.add_job(PipelineConverter._DEFAULT_SAVE_JOB_ID, save_output_github_job)
