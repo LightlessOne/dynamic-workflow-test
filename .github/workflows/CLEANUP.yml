@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows: [Execute Atlas Pipeline]
-    types:
-      - completed
+    types: [completed]
 
 permissions:
   actions: write
