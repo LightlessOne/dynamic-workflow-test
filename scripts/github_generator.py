@@ -65,11 +65,14 @@ class AtlasPipelineData:
 
     def get_info(self) -> dict:
         info = {}
-        if pipeline_descriptor_info := self._pipeline_descriptor.get('pipeline', {}):
+        if pipeline_descriptor_info := self._pipeline_descriptor.get('pipeline'):
             for param_name in _PIPELINE_INFO_PARAM_NAMES:
                 if param := pipeline_descriptor_info.get(param_name):
                     info[param_name] = param
         return info
+
+    def get_report_params(self) -> dict:
+        return self._pipeline_descriptor.get('pipeline', {}).get('report', {})
 
     def get_vars(self) -> dict:
         all_vars = {}  # pipeline vars are overridden by config vars and then by input vars
@@ -98,6 +101,7 @@ class GithubPipelineData:
 
     def __init__(self):
         self.pipeline_info = {}
+        self.report_params = {}
         self.vars = {}
         self.jobs = {}
         self.job_templates = {}
@@ -170,6 +174,9 @@ class PipelineConverter:
     _DEFAULT_PREPARE_JOB_ID = 'prepare-common-vars'
     _DEFAULT_SAVE_JOB_ID = 'save-pipeline-output'
     _REQUIRED_ATLAS_STAGE_FIELDS = ["path", "type", "command", "name"]
+    _PYTHON_DOCKER_IMAGE_TYPE = 'PYTHON_DOCKER_IMAGE'
+    _REPORT_TYPE = 'REPORT'
+    _SUPPORTED_JOB_TYPES = [_PYTHON_DOCKER_IMAGE_TYPE, _REPORT_TYPE]
 
     def __init__(self, atlas_pipeline_data: AtlasPipelineData):
         self.atlas_pipeline_data = atlas_pipeline_data
@@ -179,6 +186,7 @@ class PipelineConverter:
 
     def convert_pipeline_info(self):
         self.gh_pipeline_data.pipeline_info = self.atlas_pipeline_data.get_info()
+        self.gh_pipeline_data.report_params = self.atlas_pipeline_data.get_report_params()
 
     def convert_atlas_vars(self):
         for k, v in self._atlas_vars.items():
@@ -225,8 +233,8 @@ class PipelineConverter:
         self.gh_pipeline_data.add_job(job_id, self._convert_atlas_stage_to_gh_job(stage_data))
 
     def _convert_atlas_stage_to_gh_job(self, enriched_stage_data):
-        if enriched_stage_data.get('type') != 'PYTHON_DOCKER_IMAGE':
-            raise ValueError(f"Only stages of type 'PYTHON_DOCKER_IMAGE' are supported - {enriched_stage_data}")
+        if enriched_stage_data.get('type') not in PipelineConverter._SUPPORTED_JOB_TYPES:
+            raise ValueError(f"Only stages of types {PipelineConverter._SUPPORTED_JOB_TYPES} are supported - {enriched_stage_data}")
         github_job = {
             'uses': PipelineConverter._DEFAULT_MODULE_IMAGE_REUSABLE_FLOW,
             'with': {
@@ -253,6 +261,10 @@ class PipelineConverter:
                 github_job["if"] = "success() || failure()"
             elif "FAILURE" in when_statuses:
                 github_job["if"] = "failure()"
+        if enriched_stage_data.get('type') == PipelineConverter._REPORT_TYPE:
+            report_params = {'version': 'v1'}
+            report_params.update(self.gh_pipeline_data.report_params)
+            github_job["with"]["report"] = yaml.safe_dump(report_params, sort_keys=False)
         return github_job
 
     def add_prepare_env_vars_job(self):
@@ -279,19 +291,17 @@ class PipelineConverter:
                 """)))
 
     def add_save_output_job(self):
-        # todo le: temp impl, before modules-ops release
         if not self.atlas_pipeline_data.get_configuration():
             return
         self.gh_pipeline_data.register_stage(stage_id=PipelineConverter._DEFAULT_SAVE_JOB_ID,
                                              job_id=PipelineConverter._DEFAULT_SAVE_JOB_ID)
         output_cfg = self.atlas_pipeline_data.get_configuration().get('output', {})
-        output_cfg['pipeline_output'] = 'yes, please'
         save_output_github_job = {
             'uses': PipelineConverter._SAVE_PIPELINE_OUTPUT_REUSABLE_FLOW,
             'needs': list(self.gh_pipeline_data.get_previous_stage_jobs()),
             'if': "success() || failure()",
             'with': {
-                'output': yaml.safe_dump(output_cfg, sort_keys=False),
+                'input': yaml.safe_dump(output_cfg, sort_keys=False),
             }
         }
         self.gh_pipeline_data.add_job(PipelineConverter._DEFAULT_SAVE_JOB_ID, save_output_github_job)
