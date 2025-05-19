@@ -11,6 +11,8 @@ pipeline:
     TEST_VAR1: 9
     TEST_VAR2: ${TEST_VAR1}000
     TEST_VAR3: "abc, cde, def, ghj"
+  report:
+    something: something?
 
   stages:
     - name: Module That Adds
@@ -59,6 +61,7 @@ pipeline:
 
     - name: Module That Reports
       job: template-module-calculate
+      type: REPORT
       input:
         params:
           params:
@@ -69,8 +72,6 @@ pipeline:
       output:
         params:
           params: "*"
-      report:
-        something: something?
 
   jobs:
     template-module-calculate:
