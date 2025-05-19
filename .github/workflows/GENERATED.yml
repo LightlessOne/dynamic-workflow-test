@@ -1,11 +1,133 @@
-# Needs to exist on default branch to be executable on our dynamically created ones (sub-workflows) where we override its contents
 name: GENERATED_WORKFLOW
-
 on:
-  workflow_dispatch:
-
+  workflow_dispatch: {}
+permissions:
+  actions: read
+  contents: read
+run-name: Fresh Modules-Ops full
+env:
+  GITHUB_COMMON_ENV_VARS: |
+    QUBER_CLI_MODULE_IMAGE: ghcr.io/lightlessone/quber_cli:master
+    MODULE_TYPE: PYTHON_DOCKER_IMAGE
+    THIS_VAR_IS_A_SECRET: ${{ secrets.REPO_SECRET_NUMBER }}
+    TEST_VAR1: '9'
+    TEST_VAR2: ${TEST_VAR1}000
+    TEST_VAR3: abc, cde, def, ghj
 jobs:
-  job:
-    name: test
+  prepare-common-vars:
+    name: Prepare Common Env Vars
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+    - name: Save ENV VARS to stored_data
+      run: |
+        mkdir -p rt/stored_data/prepare-common-vars/job
+        echo "$GITHUB_COMMON_ENV_VARS" >> rt/stored_data/prepare-common-vars/job/params.yaml
+        echo "name: prepare-common-vars" >> rt/stored_data/prepare-common-vars/stage.yaml
+        echo "previous: []" >> rt/stored_data/prepare-common-vars/stage.yaml
+    - name: Upload files
+      uses: actions/upload-artifact@v4
+      with:
+        name: prepare-common-vars
+        path: rt/stored_data
+  Module_That_Adds:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Module_That_Adds
+      job_id: Module_That_Adds
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${TEST_VAR1}
+            param_2: 10
+            operation: add
+            result_name: CALCULATED_PASS_RATE
+      output: |
+        params:
+          params: '*'
+    needs:
+    - prepare-common-vars
+  Module_That_Will_Be_Skipped:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Module_That_Will_Be_Skipped
+      job_id: Module_That_Will_Be_Skipped
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${TEST_VAR1}
+            param_2: 1
+            operation: add
+            result_name: CALCULATED_PASS_RATE2
+      output: |
+        params:
+          params: '*'
+      when: |
+        condition: TEST_VAR1 != "9"
+    needs:
+    - Module_That_Adds
+  Module_That_Downloads_file:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Module_That_Downloads_file
+      job_id: Module_That_Downloads_file
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: download-file
+      input: |
+        params:
+          params:
+            url: https://raw.githubusercontent.com/Netcracker/qubership-pipelines-common-python-library/refs/heads/main/README.md
+            filename: README.md
+      output: |
+        params:
+          params: '*'
+        files:
+          FILE_KEY3: README.md
+      when: |
+        condition: TEST_VAR1 == "9" and "cde" in TEST_VAR3
+    needs:
+    - Module_That_Will_Be_Skipped
+  Module_That_Reports:
+    uses: ./.github/workflows/_execute_image_module.yml
+    with:
+      stage_id: Module_That_Reports
+      job_id: Module_That_Reports
+      module_image: ghcr.io/lightlessone/quber_cli:master
+      module_command: calc
+      input: |
+        params:
+          params:
+            param_1: ${CALCULATED_PASS_RATE}
+            param_2: 10
+            operation: add
+            result_name: RESULT2
+      output: |
+        params:
+          params: '*'
+      report: |
+        version: v1
+        something: something?
+    needs:
+    - Module_That_Downloads_file
+  save-pipeline-output:
+    uses: ./.github/workflows/_save_pipeline_output.yml
+    needs:
+    - Module_That_Reports
+    if: success() || failure()
+    with:
+      input: |
+        params:
+          params:
+            PASS_RATE: ${CALCULATED_PASS_RATE}
+            PASS_RATE2: ${CALCULATED_PASS_RATE}
+          files: &id001
+            FILE_KEY3: result.md
+        params_secure:
+          params:
+            SOME_SECRET_TOKEN: ${THIS_VAR_IS_A_SECRET}
+            SOME_SECRET_TOKEN2: ${THIS_VAR_IS_A_SECRET}
+            SOME_SECRET_TOKEN3: ${THIS_VAR_IS_A_SECRET}
+        files: *id001
