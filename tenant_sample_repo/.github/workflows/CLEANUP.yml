@@ -1,0 +1,21 @@
+name: Cleanup
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Execute Atlas Pipeline]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  cleanup-old-runs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Atlas Pipeline via composite action
+        uses: LightlessOne/dynamic-workflow-test/actions/cleanup_old_runs@feature/importable_version
+        with:
+          # GENERATED_BRANCHES_POOL_SIZE: ${{ vars.GENERATED_BRANCHES_POOL_SIZE }}
+          ACCESS_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}

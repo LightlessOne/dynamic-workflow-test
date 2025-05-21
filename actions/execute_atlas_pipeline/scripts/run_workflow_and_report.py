@@ -26,7 +26,7 @@ def run_workflow():
 
 def save_summary(data):
     message = f"""### Workflow generated and executed:
-- Check resulting [GENERATED.yml]({os.getenv('GENERATED_WORKFLOW_URL', 'UNKNOWN')})
+- Check resulting [GENERATED_WORKFLOW.yml]({os.getenv('GENERATED_WORKFLOW_URL', 'UNKNOWN')})
 """
     if data:
         message += f"""

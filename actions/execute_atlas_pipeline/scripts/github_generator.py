@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+from pathlib import Path
+
 import requests
 import yaml
 from textwrap import dedent
@@ -169,8 +171,9 @@ class VarsCalculation:
 class PipelineConverter:
     _INCLUDE_ATLAS_STAGES = _trim_lines(_GENERATOR_INCLUDE_ATLAS_STAGES)
     _ALLOW_FAILURE_ALL_JOBS = _GENERATOR_ALLOW_FAILURE_ALL_JOBS == 'true'
-    _DEFAULT_MODULE_IMAGE_REUSABLE_FLOW = './.github/workflows/_execute_image_module.yml'
-    _SAVE_PIPELINE_OUTPUT_REUSABLE_FLOW = './.github/workflows/_save_pipeline_output.yml'
+    # REFS TO REUSABLE WORKFLOWS:
+    _DEFAULT_MODULE_IMAGE_REUSABLE_FLOW = f'LightlessOne/dynamic-workflow-test/.github/workflows/_execute_image_module.yml@{os.getenv("EXECUTOR_REF")}'
+    _SAVE_PIPELINE_OUTPUT_REUSABLE_FLOW = f'LightlessOne/dynamic-workflow-test/.github/workflows/_save_pipeline_output.yml@{os.getenv("EXECUTOR_REF")}'
     _DEFAULT_PREPARE_JOB_ID = 'prepare-common-vars'
     _DEFAULT_SAVE_JOB_ID = 'save-pipeline-output'
     _REQUIRED_ATLAS_STAGE_FIELDS = ["path", "type", "command", "name"]
@@ -338,14 +341,14 @@ def main():
         if url.lower().startswith("http"):
             file_content = process_external_url(url)
         else:
-            with open(url) as fs:  # for local tests
+            with open(Path(os.getenv('CALLER_REPO_DIR', ''), url)) as fs:
                 file_content = fs.read()
         atlas_pipeline_data.process_config(file_content)
 
     pipeline_converter = PipelineConverter(atlas_pipeline_data)
     pipeline_converter.convert()
 
-    with open('generated.yml', 'w') as fs:
+    with open('GENERATED_WORKFLOW.yml', 'w') as fs:
         yaml.safe_dump(pipeline_converter.gh_pipeline_data.get_pipeline(), fs, sort_keys=False)
 
 
